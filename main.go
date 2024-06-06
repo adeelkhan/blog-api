@@ -67,7 +67,7 @@ func Logout(c *gin.Context) {
 // get all blogs
 func GetAllBlogs(c *gin.Context) {
 	// getting values out
-	cursor, err := blogCollection.Find(context.TODO(), bson.D{}) // no filter
+	cursor, err := blogCollection.Find(context.TODO(), bson.D{})
 	if err != nil {
 		panic(err)
 	}
@@ -94,10 +94,11 @@ func InsertBlog(c *gin.Context) {
 }
 
 func DeleteBlogByID(c *gin.Context) {
-	_id := c.Param("blog_id")
+	_id := c.Param("id")
 	blog_id, err := primitive.ObjectIDFromHex(_id)
 	if err != nil {
 		c.IndentedJSON(http.StatusBadRequest, gin.H{"message": "Invalid id"})
+		return
 	}
 	deleteFilter := bson.D{{"_id", blog_id}}
 	result, err := blogCollection.DeleteOne(context.TODO(), deleteFilter)
@@ -134,6 +135,7 @@ func InsertCommentsByBlogID(c *gin.Context) {
 	comment_id, err := commentCollection.InsertOne(context.TODO(), comment)
 	if err != nil {
 		c.IndentedJSON(http.StatusInternalServerError, gin.H{"message": "Couldnt insert comment"})
+		return
 	}
 
 	searchFilter := bson.D{{"_id", blog_id}}
@@ -161,12 +163,79 @@ func InsertCommentsByBlogID(c *gin.Context) {
 	resp, err := blogCollection.UpdateByID(context.TODO(), blog_id, update)
 	if err != nil {
 		c.IndentedJSON(http.StatusInternalServerError, gin.H{"message": "Couldnt Find"})
+		return
 	}
 	c.IndentedJSON(http.StatusOK, resp.ModifiedCount)
 }
 
 func DeleteComments(c *gin.Context) {
+	Id := c.Param("blog_id")
+	cId := c.Param("comment_id")
 
+	blogId, err := primitive.ObjectIDFromHex(Id)
+	if err != nil {
+		c.IndentedJSON(http.StatusBadRequest, gin.H{"message": "Invalid blog id"})
+	}
+	commentId, err := primitive.ObjectIDFromHex(cId)
+	if err != nil {
+		c.IndentedJSON(http.StatusBadRequest, gin.H{"message": "Invalid comment id"})
+	}
+
+	searchFilter := bson.D{{"_id", blogId}}
+	var result Blog
+	if err = blogCollection.FindOne(context.TODO(), searchFilter).Decode(&result); err != nil {
+		panic(err)
+	}
+
+	comments := result.Comments
+	newComments := make([]primitive.ObjectID, 0)
+	for i := range comments {
+		if comments[i] != commentId {
+			newComments = append(newComments, comments[i])
+		}
+	}
+
+	// update query
+	update := bson.D{
+		{"$set",
+			bson.D{
+				{"comments", newComments},
+			},
+		},
+	}
+	// fetch blog by id and update comment into it
+	_, err = blogCollection.UpdateByID(context.TODO(), blogId, update)
+	if err != nil {
+		c.IndentedJSON(http.StatusInternalServerError, gin.H{"message": "Couldnt Find"})
+		return
+	}
+
+	deleteFilter := bson.D{{"_id", commentId}}
+	deleteResult, err := commentCollection.DeleteOne(context.TODO(), deleteFilter)
+	// check for errors in the deleting
+	if err != nil {
+		panic(err)
+	}
+	// display the number of documents deleted
+	type replyJson struct {
+		DeletedCount int
+	}
+	reply := replyJson{
+		DeletedCount: int(deleteResult.DeletedCount),
+	}
+	c.IndentedJSON(http.StatusOK, reply)
+}
+
+func GetAllComments(c *gin.Context) {
+	cursor, err := commentCollection.Find(context.TODO(), bson.D{})
+	if err != nil {
+		panic(err)
+	}
+	var comments []Comment
+	if err = cursor.All(context.TODO(), &comments); err != nil {
+		panic(err)
+	}
+	c.IndentedJSON(http.StatusOK, comments)
 }
 
 func main() {
@@ -180,7 +249,8 @@ func main() {
 	r.POST("/blog/insert", InsertBlog)
 	r.DELETE("/blog/:id", DeleteBlogByID)
 	// comments
-	r.POST("/comments/:blog_id", InsertCommentsByBlogID)
-	r.DELETE("/comments/:blog_id/comment_id", DeleteComments)
+	r.GET("/comments/", GetAllComments)
+	r.POST("/comments/insert/:blog_id", InsertCommentsByBlogID)
+	r.DELETE("/comments/delete/:blog_id/:comment_id", DeleteComments)
 	r.Run()
 }
