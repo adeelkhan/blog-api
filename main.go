@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -28,13 +29,18 @@ type Blog struct {
 	PublishedDate primitive.DateTime   `bson:"pub_date"`
 }
 
+type User struct {
+	ID          primitive.ObjectID `bson:"_id,omitempty"`
+	Name        string             `bson:"name"`
+	Description string             `bson:"Description"`
+}
+
 // mongo configuration
 func initDb() *mongo.Client {
 	client, err := mongo.Connect(context.TODO(), options.Client().ApplyURI("mongodb://localhost:27017"))
 	if err != nil {
 		panic(err)
 	}
-
 	return client
 }
 
@@ -52,19 +58,94 @@ func Ping(c *gin.Context) {
 }
 
 // user specific handlers
-func Signup(c *gin.Context) {
-	c.String(200, "Signup")
+func Register(c *gin.Context) {
+	fmt.Println("here")
+	type RegisterRequest struct {
+		Username    string `json:"username" binding:"required"`
+		Password    string `json:"password" binding:"required"`
+		Description string `json:"description" binding:"required"`
+	}
+	req := RegisterRequest{}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.Error(err)
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+	user := User{Name: req.Username, Description: req.Description}
+	_, err := usersCollection.InsertOne(context.TODO(), user)
+	if err != nil {
+		c.IndentedJSON(http.StatusInternalServerError, gin.H{"Error": "User not Registered"})
+	}
+	c.IndentedJSON(http.StatusOK, gin.H{"Message": "User Registered successful"})
 }
 func Login(c *gin.Context) {
-	c.String(200, "login")
+	type LoginRequest struct {
+		Username string `json:"username" binding:"required"`
+		Password string `json:"password" binding:"required"`
+	}
+	req := LoginRequest{}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.Error(err)
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+	if req.Username != "username" && req.Password != "password" {
+		c.IndentedJSON(http.StatusBadRequest, gin.H{"Error": "Invalid username or password"})
+	}
+	c.IndentedJSON(http.StatusOK, gin.H{"Message": "Login successful"})
 }
 func Logout(c *gin.Context) {
 	c.String(200, "logout")
 }
 
-// blog specific handlers
+func GetAllUsers(c *gin.Context) {
+	// getting values out
+	cursor, err := usersCollection.Find(context.TODO(), bson.D{})
+	if err != nil {
+		panic(err)
+	}
+	var users []User
+	if err = cursor.All(context.TODO(), &users); err != nil {
+		panic(err)
+	}
+	c.IndentedJSON(http.StatusOK, users)
+}
+func GetUserByID(c *gin.Context) {
+	_id := c.Param("id")
+	userId, err := primitive.ObjectIDFromHex(_id)
+	if err != nil {
+		c.IndentedJSON(http.StatusBadRequest, gin.H{"message": "Invalid id"})
+	}
+	searchFilter := bson.D{{"_id", userId}}
+	var user User
+	if err = usersCollection.FindOne(context.TODO(), searchFilter).Decode(&user); err != nil {
+		panic(err)
+	}
+	c.IndentedJSON(http.StatusOK, user)
+}
+func DeleteUserByID(c *gin.Context) {
+	_id := c.Param("id")
+	userId, err := primitive.ObjectIDFromHex(_id)
+	if err != nil {
+		c.IndentedJSON(http.StatusBadRequest, gin.H{"message": "Invalid id"})
+		return
+	}
+	deleteFilter := bson.D{{"_id", userId}}
+	result, err := usersCollection.DeleteOne(context.TODO(), deleteFilter)
+	if err != nil {
+		panic(err)
+	}
+	// display the number of documents deleted
+	type replyJson struct {
+		DeletedCount int
+	}
+	reply := replyJson{
+		DeletedCount: int(result.DeletedCount),
+	}
+	c.IndentedJSON(http.StatusOK, reply)
+}
 
-// get all blogs
+// blog specific handlers
 func GetAllBlogs(c *gin.Context) {
 	// getting values out
 	cursor, err := blogCollection.Find(context.TODO(), bson.D{})
@@ -78,7 +159,6 @@ func GetAllBlogs(c *gin.Context) {
 	c.IndentedJSON(http.StatusOK, blogs)
 }
 
-// insert new blog
 func InsertBlog(c *gin.Context) {
 	var pub primitive.DateTime
 	blog := Blog{
@@ -116,7 +196,6 @@ func DeleteBlogByID(c *gin.Context) {
 	c.IndentedJSON(http.StatusOK, reply)
 }
 
-// insert comments by id
 func InsertCommentsByBlogID(c *gin.Context) {
 	_id := c.Param("blog_id")
 	blog_id, err := primitive.ObjectIDFromHex(_id)
@@ -240,10 +319,19 @@ func GetAllComments(c *gin.Context) {
 
 func main() {
 	r := gin.Default()
-	// attaching handlers
 
 	// mongo check
 	r.GET("/ping", Ping)
+
+	// users
+	r.POST("/users/register", Register)
+	r.POST("/users/login", Login)
+	r.GET("/users/logout", Logout)
+
+	r.GET("/users", GetAllUsers)
+	r.GET("/users/:id", GetUserByID)
+	r.DELETE("/users/:id", DeleteUserByID)
+
 	// blogs
 	r.GET("/blogs", GetAllBlogs)
 	r.POST("/blog/insert", InsertBlog)
