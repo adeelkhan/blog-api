@@ -2,8 +2,8 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson"
@@ -16,7 +16,7 @@ import (
 type Comment struct {
 	ID          primitive.ObjectID `bson:"_id,omitempty"`
 	Text        string             `bson:"blog_text"`
-	CommentDate primitive.DateTime `bson:"comment_date"`
+	CommentDate time.Time          `bson:"comment_date"`
 	UpVote      int                `bson:"up_votes"`
 	DownVote    int                `bson:"down_votes"`
 }
@@ -26,7 +26,7 @@ type Blog struct {
 	ID            primitive.ObjectID   `bson:"_id,omitempty"`
 	Content       string               `bson:"content,omitempty"`
 	Comments      []primitive.ObjectID `bson:"comments"`
-	PublishedDate primitive.DateTime   `bson:"pub_date"`
+	PublishedDate time.Time            `bson:"pub_date"`
 }
 
 type User struct {
@@ -59,7 +59,6 @@ func Ping(c *gin.Context) {
 
 // user specific handlers
 func Register(c *gin.Context) {
-	fmt.Println("here")
 	type RegisterRequest struct {
 		Username    string `json:"username" binding:"required"`
 		Password    string `json:"password" binding:"required"`
@@ -160,11 +159,20 @@ func GetAllBlogs(c *gin.Context) {
 }
 
 func InsertBlog(c *gin.Context) {
-	var pub primitive.DateTime
+	type BlogRequest struct {
+		Content string `json:"content" binding:"required"`
+	}
+	req := BlogRequest{}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.Error(err)
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+	// var pub time.Time
 	blog := Blog{
-		Content:       "sample text",
+		Content:       req.Content,
 		Comments:      []primitive.ObjectID{},
-		PublishedDate: pub,
+		PublishedDate: time.Now(),
 	}
 	resp, err := blogCollection.InsertOne(context.TODO(), blog)
 	if err != nil {
@@ -203,11 +211,21 @@ func InsertCommentsByBlogID(c *gin.Context) {
 		c.IndentedJSON(http.StatusBadRequest, gin.H{"message": "Invalid id"})
 	}
 
-	var cdate primitive.DateTime
+	type CommentRequest struct {
+		Comment string `json:"comment" binding:"required"`
+	}
+	req := CommentRequest{}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.Error(err)
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+
+	// var cdate time.Time
 
 	comment := Comment{
-		Text:        "This is sample comment",
-		CommentDate: cdate,
+		Text:        req.Comment,
+		CommentDate: time.Now(),
 		UpVote:      0,
 		DownVote:    0,
 	}
