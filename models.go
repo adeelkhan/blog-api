@@ -28,3 +28,9 @@ type User struct {
 	Name        string             `bson:"name"`
 	Description string             `bson:"Description"`
 }
+
+type BlogRecord struct {
+	ID     primitive.ObjectID `bson:"_id,omitempty"`
+	UserID primitive.ObjectID `bson:"user_id,omitempty"`
+	BlogID primitive.ObjectID `bson:"blog_id,omitempty"`
+}

@@ -20,16 +20,16 @@ func Ping(c *gin.Context) {
 	c.String(200, "ping")
 }
 
-func authenticateUser(c *gin.Context) {
+func authenticateUser(c *gin.Context) (error, string) {
 	token, err := c.Cookie("token")
 	if err != nil {
-		c.IndentedJSON(http.StatusUnauthorized, gin.H{"Error": "Invalid token"})
-		return
+		return err, ""
 	}
-	if VerifyToken(token) != nil {
-		c.IndentedJSON(http.StatusUnauthorized, gin.H{"Error": "Invalid token"})
-		return
+	var user string
+	if err, user = VerifyToken(token); err != nil {
+		return err, ""
 	}
+	return nil, user
 }
 
 // user specific handlers
@@ -53,6 +53,7 @@ func Register(c *gin.Context) {
 	}
 	c.IndentedJSON(http.StatusOK, gin.H{"Message": "User Registered successful"})
 }
+
 func Login(c *gin.Context) {
 	type LoginRequest struct {
 		Username string `json:"username" binding:"required"`
@@ -89,7 +90,11 @@ func Logout(c *gin.Context) {
 }
 
 func GetAllUsers(c *gin.Context) {
-	authenticateUser(c)
+	err, _ := authenticateUser(c)
+	if err != nil {
+		c.IndentedJSON(http.StatusUnauthorized, gin.H{"Error": "Invalid token"})
+		return
+	}
 
 	cursor, err := UsersCollection.Find(context.TODO(), bson.D{})
 	if err != nil {
@@ -104,7 +109,11 @@ func GetAllUsers(c *gin.Context) {
 	c.IndentedJSON(http.StatusOK, users)
 }
 func GetUserByID(c *gin.Context) {
-	authenticateUser(c)
+	err, _ := authenticateUser(c)
+	if err != nil {
+		c.IndentedJSON(http.StatusUnauthorized, gin.H{"Error": "Invalid token"})
+		return
+	}
 
 	_id := c.Param("id")
 	userId, err := primitive.ObjectIDFromHex(_id)
@@ -119,7 +128,11 @@ func GetUserByID(c *gin.Context) {
 	c.IndentedJSON(http.StatusOK, user)
 }
 func DeleteUserByID(c *gin.Context) {
-	authenticateUser(c)
+	err, _ := authenticateUser(c)
+	if err != nil {
+		c.IndentedJSON(http.StatusUnauthorized, gin.H{"Error": "Invalid token"})
+		return
+	}
 
 	_id := c.Param("id")
 	userId, err := primitive.ObjectIDFromHex(_id)
@@ -144,9 +157,36 @@ func DeleteUserByID(c *gin.Context) {
 
 // blog specific handlers
 func GetAllBlogs(c *gin.Context) {
-	authenticateUser(c)
+	err, user := authenticateUser(c)
+	if err != nil {
+		c.IndentedJSON(http.StatusUnauthorized, gin.H{"Error": "Invalid token"})
+		return
+	}
+	// find user id
+	searchFilter := bson.D{{"name", user}}
+	var userResponse User
+	if err = UsersCollection.FindOne(context.TODO(), searchFilter).Decode(&userResponse); err != nil {
+		panic(err)
+	}
 
-	cursor, err := BlogCollection.Find(context.TODO(), bson.D{})
+	// find user blogs records
+	filter := bson.D{{"user_id", userResponse.ID}}
+	cursor, err := BlogRecordCollection.Find(context.TODO(), filter)
+	if err != nil {
+		panic(err)
+	}
+	var blogsRec []BlogRecord
+	if err = cursor.All(context.TODO(), &blogsRec); err != nil {
+		panic(err)
+	}
+	arr := make([]primitive.ObjectID, 0)
+	for i := range blogsRec {
+		b := blogsRec[i]
+		arr = append(arr, b.BlogID)
+	}
+
+	blogFilter := bson.M{"_id": bson.M{"$in": arr}}
+	cursor, err = BlogCollection.Find(context.TODO(), blogFilter)
 	if err != nil {
 		panic(err)
 	}
@@ -158,7 +198,12 @@ func GetAllBlogs(c *gin.Context) {
 }
 
 func InsertBlog(c *gin.Context) {
-	authenticateUser(c)
+	err, user := authenticateUser(c)
+	if err != nil {
+		c.IndentedJSON(http.StatusUnauthorized, gin.H{"Error": "Invalid token"})
+		return
+	}
+
 	type BlogRequest struct {
 		Content string `json:"content" binding:"required"`
 	}
@@ -168,21 +213,46 @@ func InsertBlog(c *gin.Context) {
 		c.AbortWithStatus(http.StatusBadRequest)
 		return
 	}
-	// var pub time.Time
+
 	blog := Blog{
 		Content:       req.Content,
 		Comments:      []primitive.ObjectID{},
 		PublishedDate: time.Now(),
 	}
-	resp, err := BlogCollection.InsertOne(context.TODO(), blog)
+	respBlog, err := BlogCollection.InsertOne(context.TODO(), blog)
 	if err != nil {
-		c.IndentedJSON(http.StatusInternalServerError, gin.H{"message": "Blog Inserted"})
+		c.IndentedJSON(http.StatusInternalServerError, gin.H{"message": "Some error occurred while inserting blog"})
+		return
 	}
-	c.IndentedJSON(http.StatusOK, resp)
+	blogId := respBlog.InsertedID.(primitive.ObjectID)
+
+	searchFilter := bson.D{{"name", user}}
+	var userResponse User
+	if err = UsersCollection.FindOne(context.TODO(), searchFilter).Decode(&userResponse); err != nil {
+		panic(err)
+	}
+
+	// creating blog record
+	brecord := BlogRecord{
+		UserID: userResponse.ID,
+		BlogID: blogId,
+	}
+
+	_, err = BlogRecordCollection.InsertOne(context.TODO(), brecord)
+	if err != nil {
+		c.IndentedJSON(http.StatusInternalServerError, gin.H{"message": "Some error occurred while inserting blog record"})
+		return
+	}
+	c.IndentedJSON(http.StatusOK, gin.H{"message": "Blog inserted successful"})
 }
 
 func DeleteBlogByID(c *gin.Context) {
-	authenticateUser(c)
+	err, _ := authenticateUser(c)
+	if err != nil {
+		c.IndentedJSON(http.StatusUnauthorized, gin.H{"Error": "Invalid token"})
+		return
+	}
+
 	_id := c.Param("id")
 	blog_id, err := primitive.ObjectIDFromHex(_id)
 	if err != nil {
@@ -206,7 +276,12 @@ func DeleteBlogByID(c *gin.Context) {
 }
 
 func InsertCommentsByBlogID(c *gin.Context) {
-	authenticateUser(c)
+	err, _ := authenticateUser(c)
+	if err != nil {
+		c.IndentedJSON(http.StatusUnauthorized, gin.H{"Error": "Invalid token"})
+		return
+	}
+
 	_id := c.Param("blog_id")
 	blog_id, err := primitive.ObjectIDFromHex(_id)
 	if err != nil {
@@ -268,7 +343,11 @@ func InsertCommentsByBlogID(c *gin.Context) {
 }
 
 func DeleteComments(c *gin.Context) {
-	authenticateUser(c)
+	err, _ := authenticateUser(c)
+	if err != nil {
+		c.IndentedJSON(http.StatusUnauthorized, gin.H{"Error": "Invalid token"})
+		return
+	}
 
 	Id := c.Param("blog_id")
 	cId := c.Param("comment_id")
@@ -328,7 +407,11 @@ func DeleteComments(c *gin.Context) {
 }
 
 func GetAllComments(c *gin.Context) {
-	authenticateUser(c)
+	err, _ := authenticateUser(c)
+	if err != nil {
+		c.IndentedJSON(http.StatusUnauthorized, gin.H{"Error": "Invalid token"})
+		return
+	}
 
 	cursor, err := CommentCollection.Find(context.TODO(), bson.D{})
 	if err != nil {

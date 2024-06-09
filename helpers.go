@@ -21,18 +21,19 @@ func CreateToken(username string) (string, error) {
 
 	return tokenString, nil
 }
-func VerifyToken(tokenString string) error {
-	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+func VerifyToken(tokenString string) (error, string) {
+	claims := jwt.MapClaims{}
+	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
 		return SecretKey, nil
 	})
 
 	if err != nil {
-		return err
+		return err, ""
 	}
 
 	if !token.Valid {
-		return fmt.Errorf("Invalid Token")
+		return fmt.Errorf("Invalid Token"), ""
 	}
 
-	return nil
+	return nil, claims["username"].(string)
 }
