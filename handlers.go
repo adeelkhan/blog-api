@@ -20,6 +20,18 @@ func Ping(c *gin.Context) {
 	c.String(200, "ping")
 }
 
+func authenticateUser(c *gin.Context) {
+	token, err := c.Cookie("token")
+	if err != nil {
+		c.IndentedJSON(http.StatusUnauthorized, gin.H{"Error": "Invalid token"})
+		return
+	}
+	if VerifyToken(token) != nil {
+		c.IndentedJSON(http.StatusUnauthorized, gin.H{"Error": "Invalid token"})
+		return
+	}
+}
+
 // user specific handlers
 func Register(c *gin.Context) {
 	type RegisterRequest struct {
@@ -57,12 +69,19 @@ func Login(c *gin.Context) {
 	searchFilter := bson.D{{"name", req.Username}}
 	var user User
 	if err := UsersCollection.FindOne(context.TODO(), searchFilter).Decode(&user); err != nil {
-		panic(err)
+		c.IndentedJSON(http.StatusInternalServerError, gin.H{"Error": "Invalid username or password"})
+		return
 	}
 
 	if user.Password != md5Password {
 		c.IndentedJSON(http.StatusBadRequest, gin.H{"Error": "Invalid username or password"})
 	}
+	tokenString, err := CreateToken(req.Username)
+	if err != nil {
+		c.IndentedJSON(http.StatusInternalServerError, gin.H{"Error": "Invalid username or password"})
+		return
+	}
+	c.SetCookie("token", tokenString, 3600, "/", "localhost", false, false)
 	c.IndentedJSON(http.StatusOK, gin.H{"Message": "Login successful"})
 }
 func Logout(c *gin.Context) {
@@ -70,18 +89,23 @@ func Logout(c *gin.Context) {
 }
 
 func GetAllUsers(c *gin.Context) {
-	// getting values out
+	authenticateUser(c)
+
 	cursor, err := UsersCollection.Find(context.TODO(), bson.D{})
 	if err != nil {
-		panic(err)
+		c.IndentedJSON(http.StatusInternalServerError, gin.H{"Error": "Something bad happened, please try again"})
+		return
 	}
 	var users []User
 	if err = cursor.All(context.TODO(), &users); err != nil {
-		panic(err)
+		c.IndentedJSON(http.StatusInternalServerError, gin.H{"Error": "Something bad happened, please try again"})
+		return
 	}
 	c.IndentedJSON(http.StatusOK, users)
 }
 func GetUserByID(c *gin.Context) {
+	authenticateUser(c)
+
 	_id := c.Param("id")
 	userId, err := primitive.ObjectIDFromHex(_id)
 	if err != nil {
@@ -95,6 +119,8 @@ func GetUserByID(c *gin.Context) {
 	c.IndentedJSON(http.StatusOK, user)
 }
 func DeleteUserByID(c *gin.Context) {
+	authenticateUser(c)
+
 	_id := c.Param("id")
 	userId, err := primitive.ObjectIDFromHex(_id)
 	if err != nil {
@@ -118,7 +144,8 @@ func DeleteUserByID(c *gin.Context) {
 
 // blog specific handlers
 func GetAllBlogs(c *gin.Context) {
-	// getting values out
+	authenticateUser(c)
+
 	cursor, err := BlogCollection.Find(context.TODO(), bson.D{})
 	if err != nil {
 		panic(err)
@@ -131,6 +158,7 @@ func GetAllBlogs(c *gin.Context) {
 }
 
 func InsertBlog(c *gin.Context) {
+	authenticateUser(c)
 	type BlogRequest struct {
 		Content string `json:"content" binding:"required"`
 	}
@@ -154,6 +182,7 @@ func InsertBlog(c *gin.Context) {
 }
 
 func DeleteBlogByID(c *gin.Context) {
+	authenticateUser(c)
 	_id := c.Param("id")
 	blog_id, err := primitive.ObjectIDFromHex(_id)
 	if err != nil {
@@ -177,6 +206,7 @@ func DeleteBlogByID(c *gin.Context) {
 }
 
 func InsertCommentsByBlogID(c *gin.Context) {
+	authenticateUser(c)
 	_id := c.Param("blog_id")
 	blog_id, err := primitive.ObjectIDFromHex(_id)
 	if err != nil {
@@ -238,6 +268,8 @@ func InsertCommentsByBlogID(c *gin.Context) {
 }
 
 func DeleteComments(c *gin.Context) {
+	authenticateUser(c)
+
 	Id := c.Param("blog_id")
 	cId := c.Param("comment_id")
 
@@ -296,6 +328,8 @@ func DeleteComments(c *gin.Context) {
 }
 
 func GetAllComments(c *gin.Context) {
+	authenticateUser(c)
+
 	cursor, err := CommentCollection.Find(context.TODO(), bson.D{})
 	if err != nil {
 		panic(err)
