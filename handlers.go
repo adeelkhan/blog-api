@@ -45,8 +45,20 @@ func Register(c *gin.Context) {
 		c.AbortWithStatus(http.StatusBadRequest)
 		return
 	}
+
+	searchFilter := bson.D{{"name", req.Username}}
+	var user User
+	if err := UsersCollection.FindOne(context.TODO(), searchFilter).Decode(&user); err != nil {
+		c.IndentedJSON(http.StatusInternalServerError, gin.H{"Error": "Invalid username or password"})
+		return
+	}
+	if user.Name != "" {
+		c.IndentedJSON(http.StatusBadRequest, gin.H{"Error": "Username already exist, choose a different name."})
+		return
+	}
+
 	md5Password := fmt.Sprintf("%X", md5.Sum([]byte(req.Password)))
-	user := User{Name: req.Username, Password: md5Password, Description: req.Description}
+	user = User{Name: req.Username, Password: md5Password, Description: req.Description}
 	_, err := UsersCollection.InsertOne(context.TODO(), user)
 	if err != nil {
 		c.IndentedJSON(http.StatusInternalServerError, gin.H{"Error": "User not Registered"})
