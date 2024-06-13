@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"time"
 
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -9,17 +10,15 @@ import (
 
 var SecretKey = []byte("secret-key")
 
-func initDb() *mongo.Client {
-	client, err := mongo.Connect(context.TODO(), options.Client().ApplyURI("mongodb://localhost:27017"))
+func initDb(uri string, database string) (*mongo.Database, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	client, err := mongo.Connect(ctx, options.Client().ApplyURI(uri))
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
-	return client
+	db := client.Database(database)
+	return db, nil
 }
 
-var client = initDb()
-
-var UsersCollection = client.Database("blogdb").Collection("users")
-var BlogCollection = client.Database("blogdb").Collection("blogs")
-var CommentCollection = client.Database("blogdb").Collection("comments")
-var BlogRecordCollection = client.Database("blogdb").Collection("blogrecords")
+var db, _ = initDb("mongodb://localhost:27017", "blogdb")

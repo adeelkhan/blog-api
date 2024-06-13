@@ -10,14 +10,24 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
-	"go.mongodb.org/mongo-driver/mongo/readpref"
+	"go.mongodb.org/mongo-driver/mongo"
 )
 
-func Ping(c *gin.Context) {
-	if err := client.Ping(context.TODO(), readpref.Primary()); err != nil {
-		panic(err)
-	}
-	c.String(200, "ping")
+type RegisterRequest struct {
+	Username    string `json:"username" binding:"required"`
+	Password    string `json:"password" binding:"required"`
+	Description string `json:"description" binding:"required"`
+}
+
+type LoginRequest struct {
+	Username string `json:"username" binding:"required"`
+	Password string `json:"password" binding:"required"`
+}
+type replyJson struct {
+	DeletedCount int
+}
+type CommentRequest struct {
+	Comment string `json:"comment" binding:"required"`
 }
 
 func authenticateUser(c *gin.Context) (error, string) {
@@ -34,11 +44,6 @@ func authenticateUser(c *gin.Context) (error, string) {
 
 // user specific handlers
 func Register(c *gin.Context) {
-	type RegisterRequest struct {
-		Username    string `json:"username" binding:"required"`
-		Password    string `json:"password" binding:"required"`
-		Description string `json:"description" binding:"required"`
-	}
 	req := RegisterRequest{}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.Error(err)
@@ -48,7 +53,8 @@ func Register(c *gin.Context) {
 
 	searchFilter := bson.D{{"name", req.Username}}
 	var user User
-	if err := UsersCollection.FindOne(context.TODO(), searchFilter).Decode(&user); err != nil {
+	if err := db.Collection("users").FindOne(context.TODO(), searchFilter).Decode(&user); err != mongo.ErrNoDocuments {
+		fmt.Println(err)
 		c.IndentedJSON(http.StatusInternalServerError, gin.H{"Error": "Invalid username or password"})
 		return
 	}
@@ -59,18 +65,15 @@ func Register(c *gin.Context) {
 
 	md5Password := fmt.Sprintf("%X", md5.Sum([]byte(req.Password)))
 	user = User{Name: req.Username, Password: md5Password, Description: req.Description}
-	_, err := UsersCollection.InsertOne(context.TODO(), user)
+	_, err := db.Collection("users").InsertOne(context.TODO(), user)
 	if err != nil {
 		c.IndentedJSON(http.StatusInternalServerError, gin.H{"Error": "User not Registered"})
 	}
-	c.IndentedJSON(http.StatusOK, gin.H{"Message": "User Registered successful"})
+	c.IndentedJSON(http.StatusCreated, gin.H{"Message": "User Registered successful"})
 }
 
 func Login(c *gin.Context) {
-	type LoginRequest struct {
-		Username string `json:"username" binding:"required"`
-		Password string `json:"password" binding:"required"`
-	}
+
 	req := LoginRequest{}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.Error(err)
@@ -81,7 +84,7 @@ func Login(c *gin.Context) {
 	// fetching info
 	searchFilter := bson.D{{"name", req.Username}}
 	var user User
-	if err := UsersCollection.FindOne(context.TODO(), searchFilter).Decode(&user); err != nil {
+	if err := db.Collection("users").FindOne(context.TODO(), searchFilter).Decode(&user); err != nil {
 		c.IndentedJSON(http.StatusInternalServerError, gin.H{"Error": "Invalid username or password"})
 		return
 	}
@@ -108,7 +111,7 @@ func GetAllUsers(c *gin.Context) {
 		return
 	}
 
-	cursor, err := UsersCollection.Find(context.TODO(), bson.D{})
+	cursor, err := db.Collection("users").Find(context.TODO(), bson.D{})
 	if err != nil {
 		c.IndentedJSON(http.StatusInternalServerError, gin.H{"Error": "Something bad happened, please try again"})
 		return
@@ -134,7 +137,7 @@ func GetUserByID(c *gin.Context) {
 	}
 	searchFilter := bson.D{{"_id", userId}}
 	var user User
-	if err = UsersCollection.FindOne(context.TODO(), searchFilter).Decode(&user); err != nil {
+	if err = db.Collection("users").FindOne(context.TODO(), searchFilter).Decode(&user); err != nil {
 		panic(err)
 	}
 	c.IndentedJSON(http.StatusOK, user)
@@ -153,7 +156,7 @@ func DeleteUserByID(c *gin.Context) {
 		return
 	}
 	deleteFilter := bson.D{{"_id", userId}}
-	result, err := UsersCollection.DeleteOne(context.TODO(), deleteFilter)
+	result, err := db.Collection("users").DeleteOne(context.TODO(), deleteFilter)
 	if err != nil {
 		panic(err)
 	}
@@ -177,13 +180,13 @@ func GetAllBlogs(c *gin.Context) {
 	// find user id
 	searchFilter := bson.D{{"name", user}}
 	var userResponse User
-	if err = UsersCollection.FindOne(context.TODO(), searchFilter).Decode(&userResponse); err != nil {
+	if err = db.Collection("users").FindOne(context.TODO(), searchFilter).Decode(&userResponse); err != nil {
 		panic(err)
 	}
 
 	// find user blogs records
 	filter := bson.D{{"user_id", userResponse.ID}}
-	cursor, err := BlogRecordCollection.Find(context.TODO(), filter)
+	cursor, err := db.Collection("blogrecords").Find(context.TODO(), filter)
 	if err != nil {
 		panic(err)
 	}
@@ -198,7 +201,7 @@ func GetAllBlogs(c *gin.Context) {
 	}
 
 	blogFilter := bson.M{"_id": bson.M{"$in": arr}}
-	cursor, err = BlogCollection.Find(context.TODO(), blogFilter)
+	cursor, err = db.Collection("blogrecords").Find(context.TODO(), blogFilter)
 	if err != nil {
 		panic(err)
 	}
@@ -231,7 +234,7 @@ func InsertBlog(c *gin.Context) {
 		Comments:      []primitive.ObjectID{},
 		PublishedDate: time.Now(),
 	}
-	respBlog, err := BlogCollection.InsertOne(context.TODO(), blog)
+	respBlog, err := db.Collection("blogs").InsertOne(context.TODO(), blog)
 	if err != nil {
 		c.IndentedJSON(http.StatusInternalServerError, gin.H{"message": "Some error occurred while inserting blog"})
 		return
@@ -240,7 +243,7 @@ func InsertBlog(c *gin.Context) {
 
 	searchFilter := bson.D{{"name", user}}
 	var userResponse User
-	if err = UsersCollection.FindOne(context.TODO(), searchFilter).Decode(&userResponse); err != nil {
+	if err = db.Collection("users").FindOne(context.TODO(), searchFilter).Decode(&userResponse); err != nil {
 		panic(err)
 	}
 
@@ -250,7 +253,7 @@ func InsertBlog(c *gin.Context) {
 		BlogID: blogId,
 	}
 
-	_, err = BlogRecordCollection.InsertOne(context.TODO(), brecord)
+	_, err = db.Collection("blogrecords").InsertOne(context.TODO(), brecord)
 	if err != nil {
 		c.IndentedJSON(http.StatusInternalServerError, gin.H{"message": "Some error occurred while inserting blog record"})
 		return
@@ -272,15 +275,12 @@ func DeleteBlogByID(c *gin.Context) {
 		return
 	}
 	deleteFilter := bson.D{{"_id", blog_id}}
-	result, err := BlogCollection.DeleteOne(context.TODO(), deleteFilter)
+	result, err := db.Collection("blogs").DeleteOne(context.TODO(), deleteFilter)
 	// check for errors in the deleting
 	if err != nil {
 		panic(err)
 	}
 	// display the number of documents deleted
-	type replyJson struct {
-		DeletedCount int
-	}
 	reply := replyJson{
 		DeletedCount: int(result.DeletedCount),
 	}
@@ -300,9 +300,6 @@ func InsertCommentsByBlogID(c *gin.Context) {
 		c.IndentedJSON(http.StatusBadRequest, gin.H{"message": "Invalid id"})
 	}
 
-	type CommentRequest struct {
-		Comment string `json:"comment" binding:"required"`
-	}
 	req := CommentRequest{}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.Error(err)
@@ -318,7 +315,7 @@ func InsertCommentsByBlogID(c *gin.Context) {
 		UpVote:      0,
 		DownVote:    0,
 	}
-	comment_id, err := CommentCollection.InsertOne(context.TODO(), comment)
+	comment_id, err := db.Collection("comments").InsertOne(context.TODO(), comment)
 	if err != nil {
 		c.IndentedJSON(http.StatusInternalServerError, gin.H{"message": "Couldnt insert comment"})
 		return
@@ -327,7 +324,7 @@ func InsertCommentsByBlogID(c *gin.Context) {
 	searchFilter := bson.D{{"_id", blog_id}}
 	var result Blog
 	// check for errors in the finding
-	if err = BlogCollection.FindOne(context.TODO(), searchFilter).Decode(&result); err != nil {
+	if err = db.Collection("blogs").FindOne(context.TODO(), searchFilter).Decode(&result); err != nil {
 		panic(err)
 	}
 
@@ -346,7 +343,7 @@ func InsertCommentsByBlogID(c *gin.Context) {
 		},
 	}
 	// fetch blog by id and update comment into it
-	resp, err := BlogCollection.UpdateByID(context.TODO(), blog_id, update)
+	resp, err := db.Collection("blogs").UpdateByID(context.TODO(), blog_id, update)
 	if err != nil {
 		c.IndentedJSON(http.StatusInternalServerError, gin.H{"message": "Couldnt Find"})
 		return
@@ -375,7 +372,7 @@ func DeleteComments(c *gin.Context) {
 
 	searchFilter := bson.D{{"_id", blogId}}
 	var result Blog
-	if err = BlogCollection.FindOne(context.TODO(), searchFilter).Decode(&result); err != nil {
+	if err = db.Collection("blogs").FindOne(context.TODO(), searchFilter).Decode(&result); err != nil {
 		panic(err)
 	}
 
@@ -396,22 +393,19 @@ func DeleteComments(c *gin.Context) {
 		},
 	}
 	// fetch blog by id and update comment into it
-	_, err = BlogCollection.UpdateByID(context.TODO(), blogId, update)
+	_, err = db.Collection("blogs").UpdateByID(context.TODO(), blogId, update)
 	if err != nil {
 		c.IndentedJSON(http.StatusInternalServerError, gin.H{"message": "Couldnt Find"})
 		return
 	}
 
 	deleteFilter := bson.D{{"_id", commentId}}
-	deleteResult, err := CommentCollection.DeleteOne(context.TODO(), deleteFilter)
+	deleteResult, err := db.Collection("comments").DeleteOne(context.TODO(), deleteFilter)
 	// check for errors in the deleting
 	if err != nil {
 		panic(err)
 	}
 	// display the number of documents deleted
-	type replyJson struct {
-		DeletedCount int
-	}
 	reply := replyJson{
 		DeletedCount: int(deleteResult.DeletedCount),
 	}
@@ -425,7 +419,7 @@ func GetAllComments(c *gin.Context) {
 		return
 	}
 
-	cursor, err := CommentCollection.Find(context.TODO(), bson.D{})
+	cursor, err := db.Collection("comments").Find(context.TODO(), bson.D{})
 	if err != nil {
 		panic(err)
 	}

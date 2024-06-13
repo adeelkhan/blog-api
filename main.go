@@ -9,9 +9,6 @@ import (
 func main() {
 	r := gin.Default()
 
-	// mongo check
-	r.GET("/ping", Ping)
-
 	// users
 	r.POST("/users/register", Register)
 	r.POST("/users/login", Login)
