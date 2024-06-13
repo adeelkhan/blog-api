@@ -30,16 +30,16 @@ type CommentRequest struct {
 	Comment string `json:"comment" binding:"required"`
 }
 
-func authenticateUser(c *gin.Context) (error, string) {
+func authenticateUser(c *gin.Context) (string, error) {
 	token, err := c.Cookie("token")
 	if err != nil {
-		return err, ""
+		return "", err
 	}
 	var user string
 	if err, user = VerifyToken(token); err != nil {
-		return err, ""
+		return "", err
 	}
-	return nil, user
+	return user, nil
 }
 
 // user specific handlers
@@ -105,7 +105,7 @@ func Logout(c *gin.Context) {
 }
 
 func GetAllUsers(c *gin.Context) {
-	err, _ := authenticateUser(c)
+	_, err := authenticateUser(c)
 	if err != nil {
 		c.IndentedJSON(http.StatusUnauthorized, gin.H{"Error": "Invalid token"})
 		return
@@ -124,7 +124,7 @@ func GetAllUsers(c *gin.Context) {
 	c.IndentedJSON(http.StatusOK, users)
 }
 func GetUserByID(c *gin.Context) {
-	err, _ := authenticateUser(c)
+	_, err := authenticateUser(c)
 	if err != nil {
 		c.IndentedJSON(http.StatusUnauthorized, gin.H{"Error": "Invalid token"})
 		return
@@ -143,7 +143,7 @@ func GetUserByID(c *gin.Context) {
 	c.IndentedJSON(http.StatusOK, user)
 }
 func DeleteUserByID(c *gin.Context) {
-	err, _ := authenticateUser(c)
+	_, err := authenticateUser(c)
 	if err != nil {
 		c.IndentedJSON(http.StatusUnauthorized, gin.H{"Error": "Invalid token"})
 		return
@@ -172,7 +172,7 @@ func DeleteUserByID(c *gin.Context) {
 
 // blog specific handlers
 func GetAllBlogs(c *gin.Context) {
-	err, user := authenticateUser(c)
+	user, err := authenticateUser(c)
 	if err != nil {
 		c.IndentedJSON(http.StatusUnauthorized, gin.H{"Error": "Invalid token"})
 		return
@@ -213,7 +213,7 @@ func GetAllBlogs(c *gin.Context) {
 }
 
 func InsertBlog(c *gin.Context) {
-	err, user := authenticateUser(c)
+	user, err := authenticateUser(c)
 	if err != nil {
 		c.IndentedJSON(http.StatusUnauthorized, gin.H{"Error": "Invalid token"})
 		return
@@ -262,7 +262,7 @@ func InsertBlog(c *gin.Context) {
 }
 
 func DeleteBlogByID(c *gin.Context) {
-	err, _ := authenticateUser(c)
+	_, err := authenticateUser(c)
 	if err != nil {
 		c.IndentedJSON(http.StatusUnauthorized, gin.H{"Error": "Invalid token"})
 		return
@@ -288,7 +288,7 @@ func DeleteBlogByID(c *gin.Context) {
 }
 
 func InsertCommentsByBlogID(c *gin.Context) {
-	err, _ := authenticateUser(c)
+	_, err := authenticateUser(c)
 	if err != nil {
 		c.IndentedJSON(http.StatusUnauthorized, gin.H{"Error": "Invalid token"})
 		return
@@ -352,7 +352,7 @@ func InsertCommentsByBlogID(c *gin.Context) {
 }
 
 func DeleteComments(c *gin.Context) {
-	err, _ := authenticateUser(c)
+	_, err := authenticateUser(c)
 	if err != nil {
 		c.IndentedJSON(http.StatusUnauthorized, gin.H{"Error": "Invalid token"})
 		return
@@ -413,7 +413,7 @@ func DeleteComments(c *gin.Context) {
 }
 
 func GetAllComments(c *gin.Context) {
-	err, _ := authenticateUser(c)
+	_, err := authenticateUser(c)
 	if err != nil {
 		c.IndentedJSON(http.StatusUnauthorized, gin.H{"Error": "Invalid token"})
 		return
