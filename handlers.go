@@ -30,6 +30,10 @@ type CommentRequest struct {
 	Comment string `json:"comment" binding:"required"`
 }
 
+type BlogRequest struct {
+	Content string `json:"content" binding:"required"`
+}
+
 func authenticateUser(c *gin.Context) (string, error) {
 	token, err := c.Cookie("token")
 	if err != nil {
@@ -123,6 +127,7 @@ func GetAllUsers(c *gin.Context) {
 	}
 	c.IndentedJSON(http.StatusOK, users)
 }
+
 func GetUserByID(c *gin.Context) {
 	_, err := authenticateUser(c)
 	if err != nil {
@@ -142,6 +147,7 @@ func GetUserByID(c *gin.Context) {
 	}
 	c.IndentedJSON(http.StatusOK, user)
 }
+
 func DeleteUserByID(c *gin.Context) {
 	_, err := authenticateUser(c)
 	if err != nil {
@@ -219,9 +225,6 @@ func InsertBlog(c *gin.Context) {
 		return
 	}
 
-	type BlogRequest struct {
-		Content string `json:"content" binding:"required"`
-	}
 	req := BlogRequest{}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.Error(err)
