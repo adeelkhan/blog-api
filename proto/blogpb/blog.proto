@@ -1,0 +1,145 @@
+syntax = "proto3";
+
+package blog;
+option go_package = "./proto/blogpb";
+
+// user specific messages 
+message ResponseStatus {
+  int32 status = 1;
+  string message = 2;
+}
+
+message BlogUser {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+}
+
+message LoginRequest {
+  string name = 1;
+  string password = 2;
+}
+
+message LoginResponse {
+  ResponseStatus rpcResp = 1;
+  string token = 2;
+}
+
+message RegisterRequest {
+  string name = 1;
+  string password = 2;
+  string description  = 3;
+}
+message RegisterResponse {
+  ResponseStatus rpcResp = 1;
+}
+
+message LogoutRequest {
+  string token = 1;
+}
+message LogoutResponse {
+  ResponseStatus rpcResp = 1;
+}
+
+message UserRequest {
+  string token = 1;
+}
+
+message UserResponse {
+  repeated BlogUser user = 1; 
+  ResponseStatus rpcResp = 2;
+}
+
+message UserByIDRequest {
+  string id = 1;
+  string token = 2;
+}
+message UserByIDResponse {
+  BlogUser user = 1;
+  ResponseStatus rpcResp = 2;
+}
+
+message DeleteUserByIDRequest {
+  string id = 1;
+  string token = 2;
+}
+
+message DeleteUserByIDResponse {
+  ResponseStatus rpcResp = 1;
+}
+
+// blog messages
+message Blog {
+  string id = 1 ;
+  string content = 2;
+}
+message InsertBlogRequest {
+  string content = 1;
+  string token = 2;
+}
+message InsertBlogResponse {
+  ResponseStatus rpcResp = 1;
+  string blogId = 2;
+}
+message AllBlogsRequest {
+  string token = 1;
+}
+message AllBlogsResponse {
+  repeated Blog blogs = 1;
+  ResponseStatus rpcResp = 2;
+}
+message DeleteBlogByIDRequest {
+  string id = 1;
+  string token = 2;
+}
+message DeleteBlogByIDResponse {
+  ResponseStatus rpcResp = 1;
+}
+
+// comments 
+message InsertCommentByBlogIDRequest {
+  string blogId =1;
+  string comment =2;
+  string token = 3;
+}
+message InsertCommentByBlogIDResponse {
+  ResponseStatus rpcResp = 1;
+}
+
+message DeleteCommentByBlogIDRequest {
+  string blogId =1;
+  string commentId = 2;
+  string token = 3;
+}
+message DeleteCommentByBlogIDResponse {
+  ResponseStatus rpcResp = 1;
+}
+
+message DeleteAllCommentsRequest {
+  string blogId =1;
+  string commentId = 2;
+  string token = 3;
+}
+message DeleteAllCommentsResponse {
+  ResponseStatus rpcResp = 1;
+}
+
+
+
+service BlogService {
+  // users spec
+  rpc Login(LoginRequest) returns(LoginResponse) {}
+  rpc LogOut(LogoutRequest) returns (LogoutResponse) {}
+  rpc Register(RegisterRequest) returns(RegisterResponse) {}
+  rpc GetAllUsers(UserRequest) returns(UserResponse) {}
+  rpc GetUsersByID(UserByIDRequest) returns(UserByIDResponse) {}
+  rpc DeleteUserByID(DeleteUserByIDRequest) returns(DeleteUserByIDResponse) {}
+
+  // blog spec
+  rpc GetAllBlogs(AllBlogsRequest) returns(AllBlogsResponse) {}
+  rpc InsertBlog(InsertBlogRequest) returns(InsertBlogResponse) {}
+  rpc DeleteBlogByID(DeleteBlogByIDRequest) returns(DeleteBlogByIDResponse) {}
+  rpc InsertCommentsByBlogID(InsertCommentByBlogIDRequest) returns(InsertCommentByBlogIDResponse) {}
+  rpc DeleteComments(DeleteCommentByBlogIDRequest) returns(DeleteCommentByBlogIDResponse) {}
+  rpc DeleteAllComments(DeleteAllCommentsRequest) returns(DeleteAllCommentsResponse) {}
+}

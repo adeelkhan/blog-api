@@ -37,3 +37,12 @@ func VerifyToken(tokenString string) (error, string) {
 
 	return nil, claims["username"].(string)
 }
+
+func authenticateUser(token string) (string, error) {
+	var user string
+	var err error
+	if err, user = VerifyToken(token); err != nil {
+		return "", err
+	}
+	return user, nil
+}
